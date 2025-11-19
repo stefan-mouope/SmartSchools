@@ -1,15 +1,13 @@
 // consumers/verifyMatiereConsumer.ts
-import { consumeEvent } from "../rabbitmq";
+import { consumeEvent } from "../rabbitmq"; // chemin corrigé
 import { Matter } from "../../models";
-import amqp from "amqplib";
 
 export const startVerifyMatiereConsumer = async () => {
   await consumeEvent(
-    "matiere.verify",                  // routing key
-    "queue_verify_matiere",           // queue
-    async (event, msg, channel: amqp.Channel) => {
-
-      console.log("🟩 Vérification matière reçue :", event);
+    "matiere.verify", // routing key exacte attendue par le service notes
+    "queue_verify_matiere",
+    async (event, msg, channel) => {
+      console.log("Vérification matière reçue :", event);
 
       try {
         const { id_matiere } = event.data || {};
@@ -19,21 +17,11 @@ export const startVerifyMatiereConsumer = async () => {
 
         const matiere = await Matter.findOne({ where: { id: id_matiere } });
 
-        let response: any;
+        const response = matiere
+          ? { status: true, data: { matiere } }
+          : { status: false, message: "Matière introuvable" };
 
-        if (!matiere) {
-          response = {
-            status: false,
-            message: "Matière introuvable"
-          };
-        } else {
-          response = {
-            status: true,
-            data: { matiere }
-          };
-        }
-
-        // 👉 Envoi de la réponse RPC
+        // Envoi de la réponse RPC
         if (msg.properties.replyTo) {
           channel.sendToQueue(
             msg.properties.replyTo,
@@ -42,21 +30,23 @@ export const startVerifyMatiereConsumer = async () => {
           );
         }
 
+        // ACK OBLIGATOIRE après traitement réussi
+        channel.ack(msg);
       } catch (err: any) {
-        console.error("❌ Erreur verifyMatiere:", err);
-
-        const errorResponse = {
-          status: false,
-          error: err.message
-        };
+        console.error("Erreur verifyMatiere:", err.message);
 
         if (msg.properties.replyTo) {
           channel.sendToQueue(
             msg.properties.replyTo,
-            Buffer.from(JSON.stringify(errorResponse)),
+            Buffer.from(
+              JSON.stringify({ status: false, error: err.message })
+            ),
             { correlationId: msg.properties.correlationId }
           );
         }
+
+        // En cas d'erreur, on peut choisir de requeue ou non
+        channel.ack(msg); // ou channel.nack(msg, false, true) pour requeue
       }
     }
   );
