@@ -13,7 +13,7 @@ class CreateNote(APIView):
 
         # 🔍 Vérifier inscription via RabbitMQ
         verify_inscription = rabbit_client.call(
-            "note.verify.inscription",
+            "inscription.verify",
             {
                 "event": "verify_inscription",
                 "data": { "id_inscription": id_inscription }
@@ -28,7 +28,7 @@ class CreateNote(APIView):
 
         # 🔍 Vérifier matière via RabbitMQ
         verify_matiere = rabbit_client.call(
-            "note.verify.matiere",
+            "matiere.verify",
             {
                 "event": "verify_matiere",
                 "data": { "id_matiere": id_matiere }
@@ -95,7 +95,7 @@ class NotesByInscription(APIView):
             result.append({
                 "id_inscription":note.id_inscription,
                 "id_matiere": note.id_matiere,
-                "id_enseignant": note.id_enseignant,   # <-- ajouté ici
+                "id_enseignant": note.id_enseignant,
                 "sequences": sequences,
                 "trimestres": trimestres,
                 
