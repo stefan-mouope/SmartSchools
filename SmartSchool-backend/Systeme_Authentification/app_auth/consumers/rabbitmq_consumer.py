@@ -18,10 +18,9 @@ logger = logging.getLogger(__name__)
 # Actions autorisées par rôle
 ALLOWED_ACTIONS = {
     "directeur": ["create_eleve", "create_inscription", "delete_eleve"],
-    "caissier": ["view_paiements"],
-    "secretaire": ["view_eleves"],
-}
+    "enseignant": ["create_note", "update_note", "view_notes"],
 
+}
 
 def get_refreshed_tokens(refresh_token_str: str) -> dict:
     """Essaie de rafraîchir un refresh token et renvoie access + refresh si succès"""
@@ -144,6 +143,8 @@ class RabbitMQConsumer(threading.Thread):
                     response["error"] = "token et action obligatoires"
                 else:
                     result = verify_and_refresh_token(access_token, refresh_token)
+                    print("ROLE REÇU DANS TOKEN =", result.get("role"))
+                    print("ACTION DEMANDÉE =", action)
 
                     if not result["valid"]:
                         response["error"] = result["error"]
@@ -179,6 +180,7 @@ class RabbitMQConsumer(threading.Thread):
             except Exception as e:
                 logger.error(f"Erreur callback RabbitMQ : {e}")
                 response = {"valid": False, "error": "Erreur serveur"}
+
 
             # Réponse RPC
             ch.basic_publish(

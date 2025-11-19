@@ -49,4 +49,5 @@ http://127.0.0.1:8000/notes/create/1/1/
     "sequence5": 16,
     "sequence6": 14,
     "id_enseignant": 7
-}'
+}
+
