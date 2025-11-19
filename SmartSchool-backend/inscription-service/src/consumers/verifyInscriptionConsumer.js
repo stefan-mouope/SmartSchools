@@ -1,42 +1,26 @@
-// consumers/verifyInscriptionConsumer.js
-import { consumeEvent } from "../rabbitmq.js";
-import { Inscription } from "../../models/Inscription.js"; 
-import amqp from "amqplib";
+import { consumeEvent } from "../config/rabbitmq.js";
+import Inscription from "../models/inscriptionModel.js";
 
 export const startVerifyInscriptionConsumer = async () => {
   await consumeEvent(
-    "inscription.verify",                 // routing key
-    "queue_verify_inscription",           // queue
-    async (event, msg, channel) => {
+    "inscription.verify",
+    "queue_verify_inscription",
 
-      console.log("🟦 Vérification inscription reçue :", event);
+    async (event, msg, channel) => {
+      console.log("🟦 Vérification inscription :", event);
 
       try {
         const { id_inscription } = event.data || {};
-
-        if (!id_inscription) {
-          throw new Error("id_inscription manquant");
-        }
+        if (!id_inscription) throw new Error("id_inscription manquant");
 
         const inscription = await Inscription.findOne({
           where: { id: id_inscription }
         });
 
-        let response;
+        const response = inscription
+          ? { status: true, data: inscription }
+          : { status: false, message: "Inscription introuvable" };
 
-        if (!inscription) {
-          response = {
-            status: false,
-            message: "Inscription introuvable"
-          };
-        } else {
-          response = {
-            status: true,
-            data: { inscription }
-          };
-        }
-
-        // 👉 Réponse RPC
         if (msg.properties.replyTo) {
           channel.sendToQueue(
             msg.properties.replyTo,
@@ -46,12 +30,7 @@ export const startVerifyInscriptionConsumer = async () => {
         }
 
       } catch (err) {
-        console.error("❌ Erreur consumer verifyInscription :", err);
-
-        const errorResponse = {
-          status: false,
-          error: err.message,
-        };
+        const errorResponse = { status: false, error: err.message };
 
         if (msg.properties.replyTo) {
           channel.sendToQueue(

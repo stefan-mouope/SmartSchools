@@ -1,16 +1,12 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import app from "./app.js";              // <-- import correct de l'app Express
+import app from "./app.js";
 import sequelize from "./config/db.js";
 import { Student, Inscription, Tranche, Payer } from "./models/associations.js";
 import eurekaClient from "./eureka/eurekaClient.js";
 import { connectRabbitMQ } from "./config/rabbitmq.js";
-
 import { startVerifyInscriptionConsumer } from "./consumers/verifyInscriptionConsumer.js";
-
-startVerifyInscriptionConsumer();
-
 
 const PORT = process.env.PORT || 5000;
 
@@ -23,17 +19,25 @@ const PORT = process.env.PORT || 5000;
 
     console.log("🗄️  Modèles synchronisés avec la base de données.");
 
-    app.listen(PORT, async () => {
+    // D'abord : connexion à RabbitMQ
+    console.log("⏳ Connexion à RabbitMQ...");
+    await connectRabbitMQ();
+    console.log("🐇 RabbitMQ connecté.");
+
+    // Ensuite : démarrer les consumers
+    console.log("⏳ Démarrage du consumer verifyInscription...");
+    await startVerifyInscriptionConsumer();
+    console.log("👂 Consumer verifyInscription démarré.");
+
+    // Ensuite seulement : démarrer le serveur HTTP
+    app.listen(PORT, () => {
       console.log(`🚀 Service Inscription démarré sur le port ${PORT}`);
 
-      // Eureka
+      // Enfin : Eureka
       eurekaClient.start(error => {
         if (error) console.error("❌ Erreur Eureka :", error);
         else console.log("✅ Service enregistré sur Eureka !");
       });
-
-      // RabbitMQ
-      await connectRabbitMQ();
     });
 
     process.on("SIGINT", () => {
@@ -45,6 +49,6 @@ const PORT = process.env.PORT || 5000;
     });
 
   } catch (error) {
-    console.error("❌ Erreur de synchronisation :", error);
+    console.error("❌ Erreur au démarrage du service :", error);
   }
 })();

@@ -1,6 +1,3 @@
-
-
-// 🔗 Connexion à RabbitMQ et configuration du consommateur
 import amqp from "amqplib";
 import { v4 as uuidv4 } from "uuid";
 
@@ -12,26 +9,23 @@ export const connectRabbitMQ = async () => {
   const connection = await amqp.connect("amqp://localhost");
   channel = await connection.createChannel();
 
-  // Déclare un exchange
   await channel.assertExchange("inscription_events", "topic", { durable: false });
 
-  // Déclare une queue de réponse exclusive
+  // Queue de réponse exclusive (RPC)
   replyQueue = await channel.assertQueue("", { exclusive: true });
 
-  console.log("✅ Connecté à RabbitMQ, queue de réponse :", replyQueue.queue);
+  console.log("✅ RabbitMQ connecté - reply queue :", replyQueue.queue);
 
-  // Écoute les réponses
+  // Reception des réponses RPC
   channel.consume(
     replyQueue.queue,
     (msg) => {
-      if (!msg.properties.correlationId) return;
-
       const correlationId = msg.properties.correlationId;
-      const pending = pendingResponses.get(correlationId);
+      if (!correlationId) return;
 
+      const pending = pendingResponses.get(correlationId);
       if (pending) {
-        const response = JSON.parse(msg.content.toString());
-        pending.resolve(response); // Répond à la promesse en attente
+        pending.resolve(JSON.parse(msg.content.toString()));
         pendingResponses.delete(correlationId);
       }
     },
@@ -40,27 +34,41 @@ export const connectRabbitMQ = async () => {
 };
 
 /**
- * Publie un événement et attend la réponse du consommateur
+ * Publish pour RPC
  */
-export const publishEvent = async (event,routingKey='inscription.request') => {
-  if (!channel) throw new Error("❌ Channel RabbitMQ non initialisé");
+export const publishEvent = async (event, routingKey = "inscription.request") => {
+  if (!channel) throw new Error("RabbitMQ non initialisé");
 
   const correlationId = uuidv4();
 
-  const promise = new Promise((resolve, reject) => {
-    pendingResponses.set(correlationId, { resolve, reject });
+  const promise = new Promise((resolve) => {
+    pendingResponses.set(correlationId, { resolve });
 
     channel.publish(
       "inscription_events",
       routingKey,
       Buffer.from(JSON.stringify(event)),
-      { replyTo: replyQueue.queue, correlationId, persistent: true }
+      { replyTo: replyQueue.queue, correlationId }
     );
 
-    console.log("📤 Événement publié :", event, "correlationId:", correlationId);
+    console.log("📤 Event envoyé :", event);
   });
 
-  // Retourne la réponse quand elle arrive
   return promise;
 };
 
+/**
+ * Consumer générique
+ */
+export const consumeEvent = async (routingKey, queueName, callback) => {
+  await channel.assertQueue(queueName);
+
+  channel.bindQueue(queueName, "inscription_events", routingKey);
+
+  console.log("👂 Consumer prêt :", queueName, "->", routingKey);
+
+  channel.consume(queueName, async (msg) => {
+    const content = JSON.parse(msg.content.toString());
+    await callback(content, msg, channel);
+  });
+};
